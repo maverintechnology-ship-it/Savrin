@@ -1,0 +1,55 @@
+/* Checkin.css */
+.checkin-hero {
+  /* Inherits from index.css, adding specific overrides if needed */
+  min-height: 220px;
+}
+
+.timer-card {
+  /* Enhanced contrast for better readability */
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.timer-card .time {
+  font-size: 3rem;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.timer-card .status {
+  color: #7dd3fc; /* Brighter blue for better contrast than pink */
+  margin-top: 4px;
+}
+
+.checkin-hero-actions {
+  margin-top: 10px;
+}
+
+/* History Table specific styles */
+.attendance-history-card {
+  margin-top: 30px;
+}
+
+.attendance-history-card .card-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 15px;
+}
+
+.history-table td {
+  padding: 14px 16px;
+}
+
+.history-table tr:hover td {
+  background-color: var(--bg-pink);
+}
+
+@media (max-width: 600px) {
+  .checkin-hero {
+    padding: 24px;
+    text-align: center;
+  }
+  .checkin-hero-text p {
+    margin: 0 auto 20px;
+  }
+}

@@ -27,12 +27,17 @@ export default function Kanban() {
   });
 
   useEffect(() => {
-    if (!userData) return;
+    if (!userData?.companyId) return;
 
-    // Admin sees all tasks, employee sees only theirs
-    const q = userData.role === 'admin' 
-      ? collection(db, 'kanban_tasks')
-      : query(collection(db, 'kanban_tasks'), where('userId', '==', userData.id));
+    const companyId = userData.companyId;
+
+    // Filter by company first
+    let q;
+    if (userData.role === 'admin' || userData.role === 'company') {
+      q = query(collection(db, 'kanban_tasks'), where('companyId', '==', companyId));
+    } else {
+      q = query(collection(db, 'kanban_tasks'), where('companyId', '==', companyId), where('userId', '==', userData.id));
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const newTasks = { todo: [], progress: [], review: [], completed: [] };
@@ -105,6 +110,7 @@ export default function Kanban() {
       await addDoc(collection(db, 'kanban_tasks'), {
         ...taskForm,
         userId: userData.id,
+        companyId: userData.companyId,
         column: targetColumn,
         createdAt: new Date().toISOString()
       });
@@ -137,135 +143,137 @@ export default function Kanban() {
   };
 
   return (
-    <DashboardLayout title="My Allocated Tasks">
-      <div className="kanban-board">
-        <div className="board-header">
-          <h2>Kanban Board</h2>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-outline" onClick={downloadCSV}>
-              Download CSV
-            </button>
-            <button className="btn btn-primary" onClick={() => openModal('todo')}>
-              New Task
-            </button>
-          </div>
-        </div>
-
-        <div className="board-columns">
-          {Object.entries(columnMeta).map(([colId, meta]) => (
-            <div 
-              key={colId} 
-              className="kanban-column"
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, colId)}
-            >
-              <div className="column-header">
-                <div className="column-title">
-                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: meta.color }}></span>
-                  <span>{meta.title}</span>
-                  <span className="task-count">{tasks[colId].length}</span>
-                </div>
-              </div>
-              
-              <div className="column-tasks">
-                {tasks[colId].map(task => (
-                  <div 
-                    key={task.id} 
-                    className="task-card" 
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, task.id, colId)}
-                  >
-                    <div className="task-header-row">
-                      <span className={`priority-tag ${task.priority.toLowerCase()}`}>{task.priority} PRIORITY</span>
-                      <button className="task-delete-btn" onClick={() => handleDeleteTask(task.id)} title="Delete">
-                        ⨉
-                      </button>
-                    </div>
-                    <div className="task-body">
-                      <p className="task-category">{task.category}</p>
-                      <h4 className="task-title-text">{task.title}</h4>
-                      <p className="task-desc">{task.desc}</p>
-                    </div>
-                    <div className="task-progress">
-                      <div className="progress-label">
-                        <span>Progress</span>
-                        <span>
-                          <input 
-                            type="number" 
-                            className="progress-input-inline" 
-                            min="0" max="100" 
-                            value={task.progress}
-                            onChange={(e) => handleProgressChange(task.id, e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                          />%
-                        </span>
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-fill" style={{ width: `${task.progress}%` }}></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button className="add-task-btn" onClick={() => openModal(colId)}>
-                + Add Task
+    <DashboardLayout title="Project Management">
+      <div className="page-body">
+        <div className="kanban-board">
+          <div className="board-header">
+            <div>
+              <h2 style={{ fontSize: '24px', fontWeight: 700 }}>Task Board</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Track and manage your team's workflow</p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn btn-outline" onClick={downloadCSV}>
+                Export CSV
+              </button>
+              <button className="btn btn-primary" onClick={() => openModal('todo')}>
+                Create Task
               </button>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {isModalOpen && (
-        <div className="kanban-modal-overlay">
-          <div className="kanban-modal">
-            <div className="kanban-modal-header">
-              <h3>Add Task to {columnMeta[targetColumn].title}</h3>
-              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '20px' }}>&times;</button>
-            </div>
-            <form onSubmit={handleCreateTask}>
-              <div className="kanban-modal-body">
-                <div className="kanban-form-group">
-                  <label>Task Title</label>
-                  <input type="text" placeholder="What needs to be done?" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} />
+          <div className="board-columns">
+            {Object.entries(columnMeta).map(([colId, meta]) => (
+              <div 
+                key={colId} 
+                className="kanban-column"
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, colId)}
+              >
+                <div className="column-header">
+                  <div className="column-title">
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: meta.color }}></span>
+                    <span>{meta.title}</span>
+                    <span className="task-count">{tasks[colId].length}</span>
+                  </div>
                 </div>
-                <div className="kanban-form-group">
-                  <label>Description</label>
-                  <textarea placeholder="Describe the task..." value={taskForm.desc} onChange={e => setTaskForm({...taskForm, desc: e.target.value})}></textarea>
+                
+                <div className="column-tasks">
+                  {tasks[colId].map(task => (
+                    <div 
+                      key={task.id} 
+                      className="task-card" 
+                      draggable="true"
+                      onDragStart={(e) => handleDragStart(e, task.id, colId)}
+                    >
+                      <div className="task-header-row">
+                        <span className={`priority-tag ${task.priority.toLowerCase()}`}>{task.priority}</span>
+                        <button className="task-delete-btn" onClick={() => handleDeleteTask(task.id)} title="Delete">
+                          &times;
+                        </button>
+                      </div>
+                      <div className="task-body">
+                        <p className="task-category">{task.category}</p>
+                        <h4 className="task-title-text">{task.title}</h4>
+                        <p className="task-desc">{task.desc}</p>
+                      </div>
+                      <div className="task-progress">
+                        <div className="progress-label">
+                          <span>Progress</span>
+                          <span>
+                            <input 
+                              type="number" 
+                              className="progress-input-inline" 
+                              min="0" max="100" 
+                              value={task.progress}
+                              onChange={(e) => handleProgressChange(task.id, e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                              style={{ width: '30px', border: 'none', background: 'none', fontWeight: 700, textAlign: 'right' }}
+                            />%
+                          </span>
+                        </div>
+                        <div className="progress-bar">
+                          <div className="progress-fill" style={{ width: `${task.progress}%`, background: meta.color }}></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="kanban-form-group">
-                  <label>Category</label>
-                  <select value={taskForm.category} onChange={e => setTaskForm({...taskForm, category: e.target.value})}>
-                    <option>Development</option>
-                    <option>Design</option>
-                    <option>Marketing</option>
-                    <option>QA</option>
-                    <option>Planning</option>
-                    <option>DevOps</option>
-                    <option>Architecture</option>
-                  </select>
-                </div>
-                <div className="kanban-form-group">
-                  <label>Priority</label>
-                  <select value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})}>
-                    <option value="LOW">Low</option>
-                    <option value="MODERATE">Moderate</option>
-                    <option value="URGENT">Urgent</option>
-                  </select>
-                </div>
-                <div className="kanban-form-group">
-                  <label>Initial Progress (%)</label>
-                  <input type="number" min="0" max="100" value={taskForm.progress} onChange={e => setTaskForm({...taskForm, progress: parseInt(e.target.value) || 0})} />
-                </div>
+
+                <button className="add-task-btn" onClick={() => openModal(colId)}>
+                  + Add New Task
+                </button>
               </div>
-              <div className="kanban-modal-footer">
-                <button type="button" className="btn btn-outline" onClick={closeModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Create Task</button>
-              </div>
-            </form>
+            ))}
           </div>
         </div>
-      )}
+
+        {isModalOpen && (
+          <div className="kanban-modal-overlay">
+            <div className="kanban-modal card" style={{ maxWidth: '480px', padding: 0 }}>
+              <div className="kanban-modal-header">
+                <h3 style={{ fontSize: '18px', fontWeight: 600 }}>New Task in {columnMeta[targetColumn].title}</h3>
+                <button onClick={closeModal} className="btn btn-ghost btn-small">&times;</button>
+              </div>
+              <form onSubmit={handleCreateTask}>
+                <div className="kanban-modal-body">
+                  <div className="form-group">
+                    <label>Task Title</label>
+                    <input className="form-control" placeholder="What needs to be done?" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Description</label>
+                    <textarea className="form-control" rows="3" placeholder="Describe the task details..." value={taskForm.desc} onChange={e => setTaskForm({...taskForm, desc: e.target.value})}></textarea>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="form-group">
+                      <label>Category</label>
+                      <select className="form-control" value={taskForm.category} onChange={e => setTaskForm({...taskForm, category: e.target.value})}>
+                        <option>Development</option>
+                        <option>Design</option>
+                        <option>Marketing</option>
+                        <option>QA</option>
+                        <option>Planning</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Priority</label>
+                      <select className="form-control" value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})}>
+                        <option value="LOW">Low</option>
+                        <option value="MODERATE">Moderate</option>
+                        <option value="URGENT">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="kanban-modal-footer">
+                  <button type="button" className="btn btn-outline" onClick={closeModal}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Create Task</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </DashboardLayout>
   );
 }

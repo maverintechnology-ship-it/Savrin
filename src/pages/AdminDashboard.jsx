@@ -1,60 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
-import { db, auth, firebaseConfig } from '../firebase-config';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
+import { db, firebaseConfig } from '../firebase-config';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, setDoc, deleteDoc, where } from 'firebase/firestore';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import './AdminDashboard.css';
+import { useAuth } from '../context/AuthContext';
+import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
 
 export default function AdminDashboard({ initialTab = 'dashboard' }) {
+  const { userData } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
-
-  useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [stats, setStats] = useState({ employees: 0, checkedIn: 0, pendingLeaves: 0, openTasks: 0 });
   const [users, setUsers] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [attendance, setAttendance] = useState([]);
-  
-  // Add Employee Form State
-  const [newEmp, setNewEmp] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' });
 
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (!userData?.companyId) return;
+
+    const companyId = userData.companyId;
+
+    const unsubUsers = onSnapshot(query(collection(db, 'users'), where('companyId', '==', companyId)), (snapshot) => {
       const u = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsers(u);
       setStats(prev => ({ ...prev, employees: u.filter(user => user.role === 'employee').length }));
     });
 
-    const unsubAttendance = onSnapshot(query(collection(db, 'attendance'), orderBy('time', 'desc')), (snapshot) => {
+    const unsubAttendance = onSnapshot(query(collection(db, 'attendance'), where('companyId', '==', companyId)), (snapshot) => {
       const allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      allRecords.sort((a, b) => new Date(b.time) - new Date(a.time));
       setAttendance(allRecords);
-      
       const today = new Date().toLocaleDateString();
       const records = allRecords.filter(r => new Date(r.time).toLocaleDateString() === today);
-      
       const latestCheckins = {};
       records.forEach(r => {
         if (!latestCheckins[r.userId] || new Date(r.time) > new Date(latestCheckins[r.userId].time)) {
           latestCheckins[r.userId] = r;
         }
       });
-      
       const currentlyCheckedIn = Object.values(latestCheckins).filter(r => r.type === 'checkin').length;
       setStats(prev => ({ ...prev, checkedIn: currentlyCheckedIn }));
     });
 
-    const qLeaves = query(collection(db, 'leaves'), orderBy('createdAt', 'desc'));
-    const unsubLeaves = onSnapshot(qLeaves, (snapshot) => {
+    const unsubLeaves = onSnapshot(query(collection(db, 'leaves'), where('companyId', '==', companyId)), (snapshot) => {
       const l = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      l.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setLeaves(l);
       setStats(prev => ({ ...prev, pendingLeaves: l.filter(req => req.status === 'pending').length }));
     });
 
-    const unsubTasks = onSnapshot(collection(db, 'kanban_tasks'), (snapshot) => {
+    const unsubTasks = onSnapshot(query(collection(db, 'kanban_tasks'), where('companyId', '==', companyId)), (snapshot) => {
       const t = snapshot.docs.map(doc => doc.data());
       setStats(prev => ({ ...prev, openTasks: t.filter(task => task.column !== 'completed').length }));
     });
@@ -65,7 +68,7 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
       unsubLeaves();
       unsubTasks();
     };
-  }, []);
+  }, [userData]);
 
   const handleUpdateLeaveStatus = async (leaveId, status) => {
     try {
@@ -79,15 +82,16 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
     e.preventDefault();
     setLoading(true);
     setMsg({ text: '', type: '' });
-
     try {
-      // Create user in secondary auth instance to avoid logging out admin
-      const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+      let secondaryApp;
+      if (getApps().find(app => app.name === 'Secondary')) {
+        secondaryApp = getApp('Secondary');
+      } else {
+        secondaryApp = initializeApp(firebaseConfig, "Secondary");
+      }
       const secondaryAuth = getAuth(secondaryApp);
-      
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newEmp.email, newEmp.password);
       const user = userCredential.user;
-
       await setDoc(doc(db, 'users', user.uid), {
         id: user.uid,
         name: newEmp.name,
@@ -95,7 +99,6 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
         role: 'employee',
         createdAt: new Date().toISOString()
       });
-
       setMsg({ text: 'Employee added successfully!', type: 'success' });
       setNewEmp({ name: '', email: '', password: '' });
     } catch (err) {
@@ -106,60 +109,39 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to remove this employee?')) return;
-    try {
-      await deleteDoc(doc(db, 'users', userId));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   return (
     <DashboardLayout title="Admin Portal">
-      <div className="admin-tabs" style={{ display: 'flex', gap: '20px', marginBottom: '30px', borderBottom: '1px solid #e2e8f0' }}>
-        <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer', borderBottom: activeTab === 'dashboard' ? '2px solid #38bdf8' : 'none', fontWeight: activeTab === 'dashboard' ? '700' : '500' }}>Overview</button>
-        <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer', borderBottom: activeTab === 'attendance' ? '2px solid #38bdf8' : 'none', fontWeight: activeTab === 'attendance' ? '700' : '500' }}>Attendance</button>
-        <button onClick={() => setActiveTab('leaves')} style={{ padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer', borderBottom: activeTab === 'leaves' ? '2px solid #38bdf8' : 'none', fontWeight: activeTab === 'leaves' ? '700' : '500' }}>Leaves</button>
-      </div>
+      {/* Focus strictly on Overview as other sections are in the Sidebar */}
 
       {activeTab === 'dashboard' && (
         <>
           <div className="stats-row">
             <div className="stat-card">
-              <div className="stat-icon-wrap blue">
-                <img src="/assets/icons/management.png" width="20" height="20" alt="" />
-              </div>
-              <div>
-                <div className="stat-value">{stats.employees}</div>
-                <div className="stat-label">Total Employees</div>
+              <div className="stat-icon-wrap indigo">👥</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.employees}</span>
+                <span className="stat-label">Total Employees</span>
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon-wrap green">
-                <img src="/assets/icons/attendance.png" width="20" height="20" alt="" />
-              </div>
-              <div>
-                <div className="stat-value">{stats.checkedIn}</div>
-                <div className="stat-label">Checked In Today</div>
+              <div className="stat-icon-wrap green">✅</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.checkedIn}</span>
+                <span className="stat-label">Checked In Today</span>
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon-wrap pink">
-                <img src="/assets/icons/leave.png" width="20" height="20" alt="" />
-              </div>
-              <div>
-                <div className="stat-value">{stats.pendingLeaves}</div>
-                <div className="stat-label">Pending Leaves</div>
+              <div className="stat-icon-wrap pink">🏖️</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.pendingLeaves}</span>
+                <span className="stat-label">Pending Leaves</span>
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon-wrap amber">
-                <img src="/assets/icons/dashboard.png" width="20" height="20" alt="" />
-              </div>
-              <div>
-                <div className="stat-value">{stats.openTasks}</div>
-                <div className="stat-label">Open Tasks</div>
+              <div className="stat-icon-wrap amber">📋</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.openTasks}</span>
+                <span className="stat-label">Open Tasks</span>
               </div>
             </div>
           </div>
@@ -169,14 +151,22 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
             <div className="table-wrapper">
               <table>
                 <thead>
-                  <tr><th>Name</th><th>Action</th><th>Time</th></tr>
+                  <tr>
+                    <th>Name</th>
+                    <th>Action</th>
+                    <th>Time</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {attendance.slice(0, 5).map(record => (
                     <tr key={record.id}>
-                      <td style={{ fontWeight: 600 }}>{record.userName}</td>
-                      <td><span className={`badge ${record.type === 'checkin' ? 'badge-success' : 'badge-warning'}`}>{record.type}</span></td>
-                      <td>{new Date(record.time).toLocaleTimeString()}</td>
+                      <td className="clickable-name" onClick={() => setSelectedUserId(record.userId)}>{record.userName}</td>
+                      <td>
+                        <span className={`badge ${record.type === 'checkin' ? 'badge-success' : 'badge-warning'}`}>
+                          {record.type}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)' }}>{new Date(record.time).toLocaleTimeString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -185,61 +175,7 @@ export default function AdminDashboard({ initialTab = 'dashboard' }) {
           </div>
         </>
       )}
-
-      {activeTab === 'attendance' && (
-        <div className="card">
-          <h3 className="card-title">Full Attendance Logs</h3>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr><th>Name</th><th>Action</th><th>Date</th><th>Time</th></tr>
-              </thead>
-              <tbody>
-                {attendance.map(record => (
-                  <tr key={record.id}>
-                    <td>{record.userName}</td>
-                    <td><span className={`badge ${record.type === 'checkin' ? 'badge-success' : 'badge-warning'}`}>{record.type}</span></td>
-                    <td>{new Date(record.time).toLocaleDateString()}</td>
-                    <td>{new Date(record.time).toLocaleTimeString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'leaves' && (
-        <div className="card">
-          <h3 className="card-title">Leave Requests</h3>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Status</th><th>Action</th></tr>
-              </thead>
-              <tbody>
-                {leaves.map(leave => (
-                  <tr key={leave.id}>
-                    <td>{leave.userName}</td>
-                    <td>{leave.type}</td>
-                    <td>{new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}</td>
-                    <td><span className={`badge badge-${leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'warning'}`}>{leave.status}</span></td>
-                    <td>
-                      {leave.status === 'pending' && (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handleUpdateLeaveStatus(leave.id, 'approved')} className="btn btn-primary btn-small">Approve</button>
-                          <button onClick={() => handleUpdateLeaveStatus(leave.id, 'rejected')} className="btn btn-outline btn-small" style={{ color: '#ef4444' }}>Reject</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {selectedUserId && <EmployeeDetailsModal userId={selectedUserId} onClose={() => setSelectedUserId(null)} />}
     </DashboardLayout>
-
   );
 }

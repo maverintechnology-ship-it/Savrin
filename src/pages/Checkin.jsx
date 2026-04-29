@@ -68,16 +68,16 @@ export default function Checkin() {
   }, [isCheckedIn]);
 
   useEffect(() => {
-    if (!userData) return;
+    if (!userData?.companyId) return;
 
     const q = query(
       collection(db, 'attendance'), 
+      where('companyId', '==', userData.companyId),
       where('userId', '==', userData.id)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => doc.data());
-      // Sort in memory to avoid index requirements
       docs.sort((a, b) => new Date(b.time) - new Date(a.time));
       setAttendanceHistory(docs);
     });
@@ -104,6 +104,7 @@ export default function Checkin() {
       await addDoc(collection(db, 'attendance'), {
         userId: userData.id,
         userName: userData.name,
+        companyId: userData.companyId,
         type: 'checkin',
         time: isoTime
       });
@@ -144,6 +145,7 @@ export default function Checkin() {
       await addDoc(collection(db, 'attendance'), {
         userId: userData.id,
         userName: userData.name,
+        companyId: userData.companyId,
         type: 'checkout',
         time: now.toISOString(),
         secondsElapsed: totalSec
@@ -170,24 +172,48 @@ export default function Checkin() {
     }
   };
 
-  const handleBreak = (type) => {
-    const now = new Date().toISOString();
+  const handleBreak = async (type) => {
+    const now = new Date();
+    const isoTime = now.toISOString();
+    
     if (type === 'start') {
-      setIsOnBreak(true);
-      localStorage.setItem('hrms_isOnBreak', 'true');
-      localStorage.setItem('hrms_currentBreakStart', now);
+      try {
+        await addDoc(collection(db, 'attendance'), {
+          userId: userData.id,
+          userName: userData.name,
+          companyId: userData.companyId,
+          type: 'break_start',
+          time: isoTime
+        });
+        setIsOnBreak(true);
+        localStorage.setItem('hrms_isOnBreak', 'true');
+        localStorage.setItem('hrms_currentBreakStart', isoTime);
+      } catch (err) {
+        console.error("Failed to start break", err);
+      }
     } else {
-      const start = localStorage.getItem('hrms_currentBreakStart');
-      if (!start) return;
-      
-      const history = JSON.parse(localStorage.getItem('hrms_breakHistory') || '[]');
-      history.push({ start, end: now });
-      localStorage.setItem('hrms_breakHistory', JSON.stringify(history));
-      localStorage.removeItem('hrms_currentBreakStart');
-      localStorage.setItem('hrms_isOnBreak', 'false');
-      
-      setIsOnBreak(false);
-      setBreakSecondsUsed(calculateBreakTime());
+      try {
+        const start = localStorage.getItem('hrms_currentBreakStart');
+        await addDoc(collection(db, 'attendance'), {
+          userId: userData.id,
+          userName: userData.name,
+          companyId: userData.companyId,
+          type: 'break_end',
+          time: isoTime,
+          breakStart: start
+        });
+        
+        const history = JSON.parse(localStorage.getItem('hrms_breakHistory') || '[]');
+        history.push({ start, end: isoTime });
+        localStorage.setItem('hrms_breakHistory', JSON.stringify(history));
+        localStorage.removeItem('hrms_currentBreakStart');
+        localStorage.setItem('hrms_isOnBreak', 'false');
+        
+        setIsOnBreak(false);
+        setBreakSecondsUsed(calculateBreakTime());
+      } catch (err) {
+        console.error("Failed to end break", err);
+      }
     }
   };
 
@@ -236,94 +262,150 @@ export default function Checkin() {
   };
 
   return (
-    <DashboardLayout title="Attendance">
-      <div className="checkin-hero">
-        <div className="checkin-hero-text">
-          <h2>Check In to Start Working</h2>
-          <p>Track your work hours accurately. Check in when you start and check out when you're done. Breaks are recorded separately.</p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div className="timer-card">
-            <div className="time">{formatTime(secondsElapsed)}</div>
-            <div className="status">{isCheckedIn ? (isOnBreak ? 'ON BREAK' : 'CHECKED IN') : 'NOT CHECKED IN'}</div>
-          </div>
-          <div className="checkin-hero-actions">
-            <button className="btn btn-success" onClick={handleCheckIn} disabled={isCheckedIn}>Check In</button>
-            <button className="btn btn-danger" onClick={handleCheckOut} disabled={!isCheckedIn}>Log Out</button>
-          </div>
-        </div>
-      </div>
+    <DashboardLayout title="Attendance Hub">
+      <div style={{ position: 'relative' }}>
+        {/* Decorative Background Elements for Glassmorphism */}
+        {/* Decorative Background Elements for Sky Blue Glassmorphism */}
+        <div style={{ 
+          position: 'absolute', top: '-40px', left: '20%', width: '300px', height: '300px', 
+          background: 'radial-gradient(circle, rgba(125, 211, 252, 0.3) 0%, transparent 70%)', 
+          borderRadius: '50%', zIndex: 0, pointerEvents: 'none' 
+        }}></div>
+        <div style={{ 
+          position: 'absolute', bottom: '10%', right: '10%', width: '400px', height: '400px', 
+          background: 'radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, transparent 70%)', 
+          borderRadius: '50%', zIndex: 0, pointerEvents: 'none' 
+        }}></div>
 
-      {isCheckedIn && (
-        <div style={{ marginBottom: '20px' }}>
-          <div className="card" style={{ background: '#fff', borderRadius: '10px', padding: '22px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '18px' }}>
-              <span style={{ fontSize: '15px', fontWeight: '700' }}>☕ Break Management</span>
-              <div className="break-info-row">
-                <span>Used: <b>{formatTime(breakSecondsUsed)}</b></span>
+        <div className="checkin-hero" style={{ background: 'linear-gradient(135deg, #38bdf8 0%, #7dd3fc 100%)', boxShadow: '0 20px 40px rgba(56, 189, 248, 0.15)', border: '1px solid rgba(255, 255, 255, 0.4)' }}>
+          <div className="checkin-hero-text">
+            <h2 style={{ fontSize: '36px', fontWeight: '800', marginBottom: '16px', letterSpacing: '-0.02em', color: '#0369a1' }}>
+              {isCheckedIn ? 'Have a Productive Day!' : 'Ready to Start Your Shift?'}
+            </h2>
+            <p style={{ maxWidth: '500px', fontSize: '17px', lineHeight: '1.6', color: '#075985', fontWeight: '500' }}>
+              Every second counts towards excellence. Log your presence, maintain your flow, and stay connected with your team.
+            </p>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+            <div className="timer-card" style={{ minWidth: '320px', background: 'rgba(255, 255, 255, 0.4)', border: '1px solid rgba(255, 255, 255, 0.6)', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.1)' }}>
+              <div className="time" style={{ fontSize: '56px', letterSpacing: '3px', fontWeight: '900', textShadow: '0 2px 10px rgba(255,255,255,0.5)', color: '#0369a1' }}>{formatTime(secondsElapsed)}</div>
+              <div className="status" style={{ fontSize: '13px', fontWeight: '800', letterSpacing: '2px', color: '#075985' }}>
+                {isCheckedIn ? (isOnBreak ? 'ON OFFICIAL BREAK' : 'ACTIVE WORK SESSION') : 'SYSTEM OFFLINE'}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn btn-warning" onClick={() => handleBreak('start')} disabled={isOnBreak}>Start Break</button>
-              <button className="btn btn-ghost" onClick={() => handleBreak('end')} disabled={!isOnBreak}>End Break</button>
+            <div className="checkin-hero-actions" style={{ display: 'flex', gap: '16px' }}>
+              {!isCheckedIn ? (
+                <button className="btn btn-primary" onClick={handleCheckIn} style={{ background: '#0369a1', color: '#fff', padding: '14px 48px', fontWeight: '800', fontSize: '16px', borderRadius: '16px', boxShadow: '0 10px 20px rgba(3, 105, 161, 0.2)' }}>
+                  🚀 Start Session
+                </button>
+              ) : (
+                <button className="btn btn-danger" onClick={handleCheckOut} style={{ background: '#ef4444', border: 'none', color: '#fff', padding: '14px 48px', fontWeight: '800', fontSize: '16px', borderRadius: '16px' }}>
+                  🏁 End Session
+                </button>
+              )}
             </div>
           </div>
         </div>
-      )}
 
-      <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#38bdf8', marginBottom: '14px' }}>Login Details</h3>
-      <div className="dark-card" style={{ marginBottom: '24px', maxWidth: '600px' }}>
-        <div className="dark-card-row">
-          <span className="label">Log In Time</span><span className="sep">:</span><span className="value">{timeIn}</span>
-        </div>
-        <div className="dark-card-row">
-          <span className="label">Log Out Time</span><span className="sep">:</span><span className="value">{timeOut}</span>
-        </div>
-        <div className="dark-card-row">
-          <span className="label">Duration</span><span className="sep">:</span><span className="value">{totalHours}</span>
-        </div>
-      </div>
+        {isCheckedIn && (
+          <div style={{ marginBottom: '40px', position: 'relative', zIndex: 1 }}>
+            <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 32px', background: 'rgba(240, 249, 255, 0.7)', borderColor: 'rgba(186, 230, 253, 0.8)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div className="stat-icon-wrap" style={{ width: '56px', height: '56px', fontSize: '24px', background: '#fff', color: '#0ea5e9', boxShadow: '0 4px 12px rgba(14, 165, 233, 0.1)' }}>☕</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '17px', color: '#0369a1' }}>Break Management</div>
+                  <div style={{ fontSize: '14px', color: '#075985', marginTop: '2px' }}>Total break time used: <strong style={{ color: '#0ea5e9' }}>{formatTime(breakSecondsUsed)}</strong></div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                {!isOnBreak ? (
+                  <button className="btn btn-outline" onClick={() => handleBreak('start')} style={{ borderRadius: '12px', padding: '10px 24px', fontWeight: '600', borderColor: '#0ea5e9', color: '#0ea5e9', background: '#fff' }}>
+                    Start Break
+                  </button>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => handleBreak('end')} style={{ borderRadius: '12px', padding: '10px 24px', fontWeight: '600', background: '#0ea5e9' }}>
+                    Resume Work
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="card" style={{ background: '#fff', borderRadius: '10px', padding: '22px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <div className="card-header" style={{ marginBottom: '18px', padding: 0, border: 'none' }}>
-          <span style={{ fontSize: '15px', fontWeight: '700' }}>Attendance History</span>
-          <button onClick={downloadCSV} className="btn btn-outline btn-small" disabled={attendanceHistory.length === 0}>
-            Download CSV
-          </button>
+        <div className="stats-row" style={{ marginBottom: '40px', position: 'relative', zIndex: 1 }}>
+          <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '28px', background: 'rgba(255, 255, 255, 0.8)' }}>
+            <div className="stat-icon-wrap" style={{ background: '#f0f9ff', color: '#0ea5e9' }}>🕒</div>
+            <div className="stat-info">
+              <span className="stat-value" style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>{timeIn}</span>
+              <span className="stat-label" style={{ color: '#0ea5e9' }}>Check-In Time</span>
+            </div>
+          </div>
+          <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '28px', background: 'rgba(255, 255, 255, 0.8)' }}>
+            <div className="stat-icon-wrap" style={{ background: '#f0f9ff', color: '#0ea5e9' }}>🕒</div>
+            <div className="stat-info">
+              <span className="stat-value" style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>{timeOut}</span>
+              <span className="stat-label" style={{ color: '#0ea5e9' }}>Check-Out Time</span>
+            </div>
+          </div>
+          <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '28px', background: 'rgba(255, 255, 255, 0.8)' }}>
+            <div className="stat-icon-wrap" style={{ background: '#f0f9ff', color: '#0ea5e9' }}>⌛</div>
+            <div className="stat-info">
+              <span className="stat-value" style={{ fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>{totalHours}</span>
+              <span className="stat-label" style={{ color: '#0ea5e9' }}>Last Duration</span>
+            </div>
+          </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
-            <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <tr>
-                <th style={{ padding: '11px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Date</th>
-                <th style={{ padding: '11px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Name</th>
-                <th style={{ padding: '11px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>In Time</th>
-                <th style={{ padding: '11px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Out Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {getGroupedHistory().length === 0 ? (
-                <tr><td colSpan="4"><div className="empty-state"><p>No records yet</p></div></td></tr>
-              ) : (
-                getGroupedHistory().map((session, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: '600' }}>{session.date}</td>
-                    <td style={{ padding: '12px 16px' }}>{session.name}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
-                        {session.in}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: '#fee2e2', color: '#991b1b', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
-                        {session.out}
-                      </span>
+
+        <div className="glass-card" style={{ padding: '32px', position: 'relative', zIndex: 1, background: 'rgba(255, 255, 255, 0.9)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <div>
+              <h3 className="card-title" style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0369a1' }}>Attendance History</h3>
+              <p style={{ color: '#0ea5e9', fontSize: '13px', marginTop: '4px', opacity: 0.8 }}>Review your past activity and session details.</p>
+            </div>
+            <button onClick={downloadCSV} className="btn btn-outline btn-small" disabled={attendanceHistory.length === 0} style={{ padding: '8px 20px', borderRadius: '10px', borderColor: '#0ea5e9', color: '#0ea5e9', background: '#fff' }}>
+              📥 Export Data
+            </button>
+          </div>
+          <div className="table-wrapper" style={{ background: 'transparent', border: 'none' }}>
+            <table style={{ background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+              <thead style={{ background: '#f0f9ff' }}>
+                <tr>
+                  <th style={{ background: 'transparent', color: '#0369a1' }}>Date</th>
+                  <th style={{ background: 'transparent', color: '#0369a1' }}>Staff Member</th>
+                  <th style={{ background: 'transparent', color: '#0369a1' }}>Check In</th>
+                  <th style={{ background: 'transparent', color: '#0369a1' }}>Check Out</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getGroupedHistory().length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', padding: '60px', color: '#0ea5e9' }}>
+                      <div style={{ fontSize: '32px', opacity: 0.2, marginBottom: '12px' }}>📅</div>
+                      No attendance records found yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  getGroupedHistory().map((session, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f0f9ff' }}>
+                      <td style={{ fontWeight: '700', color: '#0369a1' }}>{session.date}</td>
+                      <td style={{ color: '#075985' }}>{session.name}</td>
+                      <td>
+                        <span className="badge" style={{ padding: '6px 14px', fontWeight: '700', borderRadius: '10px', background: '#f0fdf4', color: '#16a34a' }}>
+                          {session.in}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge" style={{ padding: '6px 14px', fontWeight: '700', borderRadius: '10px', background: '#fef2f2', color: '#dc2626' }}>
+                          {session.out}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </DashboardLayout>

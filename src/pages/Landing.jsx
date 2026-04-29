@@ -13,7 +13,7 @@ export default function Landing() {
         <nav className="landing-nav-actions">
           <a href="#" className="landing-btn-nav">Features</a>
           <a href="#" className="landing-btn-nav">Solutions</a>
-          <Link to="/admin-login" className="landing-btn-admin-access">Admin Access</Link>
+          <Link to="/login" className="landing-btn-admin-access">Portal Login</Link>
         </nav>
       </header>
 
@@ -24,8 +24,8 @@ export default function Landing() {
           <p className="landing-description">The all-in-one HRMS platform designed to streamline operations, monitor performance, and boost organizational productivity with real-time insights.</p>
           
           <div className="landing-hero-actions">
-            <Link to="/login" className="landing-btn-get-started">Employee Login</Link>
-            <Link to="/admin-login" className="landing-btn-secondary">Admin Portal</Link>
+            <Link to="/login" className="landing-btn-get-started">Go to Login Portal</Link>
+            <Link to="/login" className="landing-btn-secondary">Request Demo</Link>
           </div>
         </div>
       </main>

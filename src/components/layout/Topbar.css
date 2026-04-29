@@ -1,88 +1,97 @@
-/* Topbar.css */
+/* Topbar.css - Modern SaaS Styling */
 .topbar {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   padding: 0 32px;
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky; 
-  top: 0; 
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  box-shadow: var(--shadow-sm);
 }
 
-.topbar-title { 
-  font-size: 18px; 
-  font-weight: 800; 
-  color: #0f172a; 
-  letter-spacing: -0.3px;
+.topbar-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
 }
 
 .mobile-menu-btn {
   display: none;
-  background: #f1f5f9; 
+  background: var(--bg);
   border: none;
-  font-size: 20px; 
-  color: #0f172a;
-  cursor: pointer; 
+  font-size: 18px;
+  color: var(--text);
   padding: 8px;
-  border-radius: 10px;
-  transition: all 0.2s;
+  border-radius: var(--radius-sm);
 }
-.mobile-menu-btn:hover { background: #e2e8f0; }
 
-/* Dropdown Styles */
 .global-checkin-widget {
   position: relative;
   cursor: pointer;
-  user-select: none;
-  transition: transform 0.2s;
+  background: var(--bg);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: var(--transition);
 }
-.global-checkin-widget:active { transform: scale(0.98); }
+
+.global-checkin-widget:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-dark);
+}
+
+.timer-text {
+  font-family: 'Inter', monospace;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 
 .widget-dropdown {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
-  border: 1px solid rgba(0,0,0,0.05);
-  min-width: 200px;
-  overflow: hidden;
-  z-index: 2000;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  min-width: 220px;
   padding: 8px;
-  animation: slideDownIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes slideDownIn {
-  from { opacity: 0; transform: translateY(-12px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  z-index: 1000;
 }
 
 .dropdown-item {
   padding: 12px 16px;
   font-size: 14px;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 500;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 12px;
-  border-radius: 10px;
-  transition: all 0.2s;
+  border-radius: var(--radius);
+  transition: var(--transition);
 }
-.dropdown-item:hover { 
-  background: #f8fafc; 
-  color: #0f172a; 
+
+.dropdown-item:hover {
+  background: var(--bg);
+  color: var(--primary);
   transform: translateX(4px);
 }
-.dropdown-item.disabled { opacity: 0.4; cursor: not-allowed; }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .mobile-menu-btn { display: block; }
-  .topbar { padding: 0 16px; height: 60px; }
-  .topbar-title { font-size: 16px; }
+  .topbar { padding: 0 20px; }
 }

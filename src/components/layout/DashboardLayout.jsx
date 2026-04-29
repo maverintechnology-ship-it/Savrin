@@ -17,7 +17,7 @@ export default function DashboardLayout({ children, title }) {
           {children}
         </div>
         <footer className="page-footer">
-          © {new Date().getFullYear()}. All Rights Reserved. Created by <a href="#">Yastha Technologies</a>
+          © {new Date().getFullYear()} SAVRIN. All Rights Reserved.
         </footer>
       </div>
     </div>

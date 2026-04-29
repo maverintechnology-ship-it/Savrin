@@ -117,33 +117,43 @@ export default function Topbar({ title, toggleSidebar }) {
 
   return (
     <header className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button className="mobile-menu-btn" onClick={toggleSidebar}>☰</button>
         <span className="topbar-title">{title || 'Dashboard'}</span>
       </div>
       
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginLeft: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+        <span className="topbar-date" style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500 }}>{dateStr}</span>
+        
         {userData?.role === 'employee' && (
-          <div className="global-checkin-widget" ref={dropdownRef} onClick={() => setShowDropdown(!showDropdown)} style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#f8fafc', padding: '5px 15px', borderRadius: '30px', border: '1px solid #e2e8f0' }}>
-            <span style={{ fontFamily: 'monospace', fontWeight: '800', fontSize: '14px', color: isCheckedIn ? (isOnBreak ? '#f59e0b' : '#0284c7') : '#64748b' }}>
+          <div className="global-checkin-widget" ref={dropdownRef} onClick={() => setShowDropdown(!showDropdown)}>
+            <span className="timer-text" style={{ color: isCheckedIn ? (isOnBreak ? 'var(--warning)' : 'var(--primary)') : 'var(--text-light)' }}>
               {isCheckedIn ? formatTime(seconds) : '00:00:00'}
             </span>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isCheckedIn ? (isOnBreak ? '#f59e0b' : '#10b981') : '#cbd5e1' }}></div>
-            <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748b' }}>
-              {isCheckedIn ? (isOnBreak ? 'BREAK' : 'IN') : 'OUT'}
+            <div className="status-indicator" style={{ background: isCheckedIn ? (isOnBreak ? 'var(--warning)' : 'var(--success)') : 'var(--text-light)' }}></div>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {isCheckedIn ? (isOnBreak ? 'Break' : 'Active') : 'Offline'}
             </span>
             
             {showDropdown && (
               <div className="widget-dropdown" onClick={(e) => e.stopPropagation()}>
                 {!isCheckedIn ? (
-                  <div className="dropdown-item" onClick={handleCheckIn}>🚀 Check In</div>
+                  <div className="dropdown-item" onClick={handleCheckIn}>
+                    <span style={{ fontSize: '18px' }}>🚀</span> Check In Now
+                  </div>
                 ) : (
                   <>
-                    <div className="dropdown-item" onClick={handleCheckOut}>🏁 Log Out</div>
+                    <div className="dropdown-item" onClick={handleCheckOut}>
+                      <span style={{ fontSize: '18px' }}>🏁</span> Log Out
+                    </div>
                     {!isOnBreak ? (
-                      <div className="dropdown-item" onClick={() => handleBreak('start')}>☕ Start Break</div>
+                      <div className="dropdown-item" onClick={() => handleBreak('start')}>
+                        <span style={{ fontSize: '18px' }}>☕</span> Take a Break
+                      </div>
                     ) : (
-                      <div className="dropdown-item" onClick={() => handleBreak('end')}>🛠 End Break</div>
+                      <div className="dropdown-item" onClick={() => handleBreak('end')}>
+                        <span style={{ fontSize: '18px' }}>🛠</span> Resume Work
+                      </div>
                     )}
                   </>
                 )}
@@ -151,7 +161,6 @@ export default function Topbar({ title, toggleSidebar }) {
             )}
           </div>
         )}
-        <span className="topbar-date" style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>{dateStr}</span>
       </div>
     </header>
   );

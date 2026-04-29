@@ -65,9 +65,22 @@ export default function Dashboard() {
 
       <div className="card">
         <h3 className="card-title">Welcome back, {userData?.name}!</h3>
-        <p style={{ color: '#64748b', fontSize: '14px' }}>
+        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
           Use the sidebar to manage your attendance, request leaves, or chat with the HR team.
         </p>
+
+        {(!userData?.mobile || !userData?.address) && (
+          <div style={{ background: '#fff9db', border: '1px solid #fab005', borderRadius: '10px', padding: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ fontSize: '30px' }}>👋</div>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ margin: 0, color: '#856404' }}>Complete Your Profile</h4>
+              <p style={{ margin: '5px 0 0', fontSize: '13px', color: '#856404' }}>
+                It looks like your profile information is incomplete. Please update your mobile number and address to stay connected.
+              </p>
+            </div>
+            <a href="/profile" className="btn btn-primary" style={{ background: '#fab005', borderColor: '#fab005', color: '#000' }}>Update Profile</a>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

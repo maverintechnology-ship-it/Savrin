@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { db } from '../firebase-config';
 import { collection, addDoc, query, onSnapshot, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
 import { sendWorkshopTicket } from '../services/emailService';
@@ -12,10 +13,11 @@ export default function Resources() {
   const { tab } = useParams();
   const navigate = useNavigate();
   const { userData } = useAuth();
+  const { addToast } = useNotifications();
   const isCompany = userData?.role === 'company';
   const isStaffAdmin = userData?.role === 'admin';
   const canManageResources = isCompany || isStaffAdmin;
-  const canEditPolicy = isCompany; // Only Company Owners can edit policies
+  const canEditPolicy = isCompany || isStaffAdmin; // Both Company Owners and Staff Admins can edit policies
   const [activeTab, setActiveTab] = useState(tab || 'workshops');
   const [showMenu, setShowMenu] = useState(null); // Tracks which item's menu is open
 
@@ -36,9 +38,12 @@ export default function Resources() {
   const [editingItem, setEditingItem] = useState(null); // For edit forms
   const [selectedPolicyId, setSelectedPolicyId] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date()); // For calendar navigation
+  const [currentTime, setCurrentTime] = useState(new Date()); // For live meeting checks
 
-
-
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   console.log("Resources component rendering. activeTab:", activeTab, "canManage:", canManageResources);
 
@@ -114,9 +119,9 @@ export default function Resources() {
   }, [userData?.companyId, userData?.id, canManageResources]);
 
 
-  // Auto-seeding for policies if empty and is admin
+  // Auto-seeding for policies if empty and has companyId
   useEffect(() => {
-    if (canEditPolicy && policies.length === 0) {
+    if (userData?.companyId && policies.length === 0) {
       const seedPolicies = async () => {
         const initialPolicies = [
           {
@@ -175,6 +180,7 @@ export default function Resources() {
 
   const handleTabChange = (newTab) => {
     setActiveTab(newTab);
+    setEditingItem(null);
     navigate(`/resources/${newTab}`);
   };
 
@@ -190,6 +196,22 @@ export default function Resources() {
       createdAt: new Date().toISOString()
     });
     e.target.reset();
+  };
+
+  const handleUpdateWorkshop = async (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    try {
+      await updateDoc(doc(db, 'workshops', editingItem.id), {
+        title: data.get('title'),
+        category: data.get('category'),
+        date: data.get('date'),
+        time: data.get('time')
+      });
+      setEditingItem(null);
+    } catch (err) {
+      console.error("Workshop update failed:", err);
+    }
   };
 
   const handleDelete = async (coll, id) => {
@@ -296,19 +318,47 @@ export default function Resources() {
       link: data.get('link'),
       date: data.get('date'),
       time: data.get('time'),
+      companyId: userData.companyId,
+      createdBy: userData.name || userData.email,
       createdAt: new Date().toISOString()
     });
     e.target.reset();
   };
 
+  const handleUpdateMeeting = async (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    try {
+      await updateDoc(doc(db, 'meetings', editingItem.id), {
+        title: data.get('title'),
+        link: data.get('link'),
+        date: data.get('date'),
+        time: data.get('time')
+      });
+      setEditingItem(null);
+    } catch (err) {
+      console.error("Update failed:", err);
+    }
+  };
+
   const handleRegisterWorkshop = async (workshop) => {
     if (!userData) {
-      alert("Please login to register.");
+      addToast({
+        type: 'error',
+        icon: '❌',
+        title: 'Error',
+        message: 'Please login to register.'
+      });
       return;
     }
     
     if (registrations.includes(workshop.id)) {
-      alert("You are already registered for this workshop!");
+      addToast({
+        type: 'warning',
+        icon: '⚠️',
+        title: 'Already Registered',
+        message: 'You are already registered for this workshop!'
+      });
       return;
     }
 
@@ -327,7 +377,7 @@ export default function Resources() {
       });
 
       // Send real email ticket
-      await sendWorkshopTicket(
+      const emailSent = await sendWorkshopTicket(
         userData.email,
         userData.name || userData.email.split('@')[0],
         workshop.title,
@@ -336,10 +386,29 @@ export default function Resources() {
         ticketNumber
       );
 
-      alert(`Registration Successful! A ticket has been sent to ${userData.email}`);
+      if (emailSent) {
+        addToast({
+          type: 'success',
+          icon: '✅',
+          title: 'Registration Successful',
+          message: `A ticket has been sent to ${userData.email}`
+        });
+      } else {
+        addToast({
+          type: 'warning',
+          icon: '⚠️',
+          title: 'Registration Successful',
+          message: 'You are registered, but we failed to send the ticket email. Please check EmailJS configuration.'
+        });
+      }
     } catch (err) {
       console.error("Registration failed:", err);
-      alert("Failed to register. Please try again.");
+      addToast({
+        type: 'error',
+        icon: '❌',
+        title: 'Registration Failed',
+        message: 'Failed to register. Please try again.'
+      });
     }
   };
 
@@ -363,12 +432,22 @@ export default function Resources() {
         companyId: userData.companyId,
         createdAt: new Date().toISOString()
       });
-      alert("Feedback submitted successfully!");
+      addToast({
+        type: 'success',
+        icon: '✅',
+        title: 'Success',
+        message: 'Feedback submitted successfully!'
+      });
       e.target.reset();
       setFeedbackCategory('Work Environment');
     } catch (err) {
       console.error("Feedback failed:", err);
-      alert("Failed to submit feedback.");
+      addToast({
+        type: 'error',
+        icon: '❌',
+        title: 'Error',
+        message: 'Failed to submit feedback.'
+      });
     }
   };
 
@@ -424,21 +503,26 @@ export default function Resources() {
           <div className="resource-section">
             {canManageResources && (
               <div className="card" style={{ marginBottom: '32px' }}>
-                <h3 className="card-title">Add New Workshop</h3>
-                <form onSubmit={handleCreateWorkshop} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '15px' }}>
+                <h3 className="card-title">{editingItem ? 'Edit Workshop' : 'Add New Workshop'}</h3>
+                <form onSubmit={editingItem ? handleUpdateWorkshop : handleCreateWorkshop} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '15px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <input name="title" type="text" className="form-control" placeholder="Workshop Title" required />
+                    <input name="title" type="text" className="form-control" placeholder="Workshop Title" defaultValue={editingItem?.title || ''} required />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <input name="category" type="text" className="form-control" placeholder="Category" required />
+                    <input name="category" type="text" className="form-control" placeholder="Category" defaultValue={editingItem?.category || ''} required />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <input name="date" type="date" className="form-control" required />
+                    <input name="date" type="date" className="form-control" defaultValue={editingItem?.date || ''} required />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <input name="time" type="time" className="form-control" required />
+                    <input name="time" type="time" className="form-control" defaultValue={editingItem?.time || ''} required />
                   </div>
-                  <button type="submit" className="btn btn-primary" style={{ height: '45px' }}>Create Workshop</button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="submit" className="btn btn-primary" style={{ height: '45px', flex: 2 }}>{editingItem ? 'Update Workshop' : 'Create Workshop'}</button>
+                    {editingItem && (
+                      <button type="button" onClick={() => setEditingItem(null)} className="btn btn-outline" style={{ height: '45px', flex: 1 }}>Cancel</button>
+                    )}
+                  </div>
                 </form>
               </div>
             )}
@@ -453,7 +537,8 @@ export default function Resources() {
                         <button onClick={() => setShowMenu(showMenu === w.id ? null : w.id)} className="btn btn-ghost btn-small">⋮</button>
                         {showMenu === w.id && (
                           <div className="card" style={{ position: 'absolute', right: 0, top: '35px', padding: '8px', zIndex: 10, minWidth: '120px', boxShadow: 'var(--shadow-lg)' }}>
-                            <button onClick={() => { handleDelete('workshops', w.id); setShowMenu(null); }} style={{ width: '100%', textAlign: 'left', color: 'var(--danger)', fontSize: '12px', fontWeight: 600 }}>Delete</button>
+                            <button onClick={() => { setEditingItem(w); setShowMenu(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', cursor: 'pointer', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Edit</button>
+                            <button onClick={() => { handleDelete('workshops', w.id); setShowMenu(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', cursor: 'pointer', fontWeight: 600, display: 'block' }}>Delete</button>
                           </div>
                         )}
                       </div>
@@ -912,32 +997,46 @@ export default function Resources() {
           <div className="resource-section">
             {canManageResources && (
               <div className="card" style={{ marginBottom: '25px' }}>
-                <h3 className="card-title">Schedule New Meeting</h3>
-                <form onSubmit={handleCreateMeeting} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '15px' }}>
-                  <input name="title" type="text" className="form-control" placeholder="Meeting Title" required />
-                  <input name="link" type="text" className="form-control" placeholder="Meeting Link" required />
-                  <input name="date" type="date" className="form-control" required />
-                  <input name="time" type="time" className="form-control" required />
-                  <button type="submit" className="btn btn-primary" style={{ gridColumn: 'span 2' }}>Schedule Meeting</button>
+                <h3 className="card-title">{editingItem?.type === 'meeting' ? 'Edit Meeting' : 'Schedule New Meeting'}</h3>
+                <form key={editingItem ? editingItem.id : 'new-meeting'} onSubmit={editingItem?.type === 'meeting' ? handleUpdateMeeting : handleCreateMeeting} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '15px' }}>
+                  <input name="title" type="text" className="form-control" placeholder="Meeting Title" defaultValue={editingItem?.type === 'meeting' ? editingItem.title : ''} required />
+                  <input name="link" type="text" className="form-control" placeholder="Meeting Link" defaultValue={editingItem?.type === 'meeting' ? editingItem.link : ''} required />
+                  <input name="date" type="date" className="form-control" defaultValue={editingItem?.type === 'meeting' ? editingItem.date : ''} required />
+                  <input name="time" type="time" className="form-control" defaultValue={editingItem?.type === 'meeting' ? editingItem.time : ''} required />
+                  <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                    <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>{editingItem?.type === 'meeting' ? 'Update Meeting' : 'Schedule Meeting'}</button>
+                    {editingItem?.type === 'meeting' && (
+                      <button type="button" onClick={() => setEditingItem(null)} className="btn btn-outline" style={{ flex: 1 }}>Cancel</button>
+                    )}
+                  </div>
                 </form>
               </div>
             )}
             <div className="card">
               <h4 style={{ marginBottom: '15px' }}>All Scheduled Meetings</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {meetings.map(m => (
-                  <div key={m.id} style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0' }}>
+                {meetings.map(m => {
+                  const meetingTime = m.scheduledAt ? new Date(m.scheduledAt) : new Date(`${m.date}T${m.time}`);
+                  const isStarted = currentTime >= meetingTime;
+                  
+                  return (
+                  <div key={m.id} style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0', opacity: isStarted ? 1 : 0.7 }}>
                     <div>
                       <div style={{ fontWeight: 700 }}>{m.title}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>📅 {m.date} | ⏰ {m.time}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>📅 {m.date || new Date(m.scheduledAt).toLocaleDateString()} | ⏰ {m.time || new Date(m.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <a href={m.link} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ color: '#38bdf8' }}>Join Link</a>
+                      {isStarted ? (
+                        <a href={m.link} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '12px', textDecoration: 'none' }}>🚀 Join Now</a>
+                      ) : (
+                        <span className="btn" style={{ padding: '6px 12px', fontSize: '12px', background: '#e2e8f0', color: '#94a3b8', cursor: 'not-allowed' }}>⏳ Waiting</span>
+                      )}
                       {canManageResources && (
                         <div style={{ position: 'relative' }}>
                           <button onClick={() => setShowMenu(showMenu === m.id ? null : m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '18px' }}>⋮</button>
                           {showMenu === m.id && (
                             <div style={{ position: 'absolute', right: 0, top: '25px', background: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderRadius: '6px', zIndex: 10, padding: '5px', minWidth: '100px' }}>
+                              <button onClick={() => { setEditingItem({ ...m, type: 'meeting' }); setShowMenu(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>Edit</button>
                               <button onClick={() => { handleDelete('meetings', m.id); setShowMenu(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>Delete</button>
                             </div>
                           )}
@@ -945,9 +1044,7 @@ export default function Resources() {
                       )}
                     </div>
                   </div>
-
-
-                ))}
+                )})}
                 {meetings.length === 0 && <p style={{ textAlign: 'center', color: '#64748b', padding: '20px' }}>No meetings scheduled.</p>}
               </div>
             </div>

@@ -3,7 +3,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import './DashboardLayout.css';
 
-export default function DashboardLayout({ children, title }) {
+export default function DashboardLayout({ children, title, fullWidth = false, noPadding = false }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -13,12 +13,23 @@ export default function DashboardLayout({ children, title }) {
       <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
       <div className="main-content">
         <Topbar title={title} toggleSidebar={toggleSidebar} />
-        <div className="page-body">
+        <div 
+          className="page-body" 
+          style={{ 
+            maxWidth: fullWidth ? 'none' : '900px', 
+            padding: noPadding ? '0' : '24px 28px',
+            overflow: noPadding ? 'hidden' : 'auto',
+            display: noPadding ? 'flex' : 'block',
+            flexDirection: 'column'
+          }}
+        >
           {children}
         </div>
-        <footer className="page-footer">
-          © {new Date().getFullYear()} SAVRIN. All Rights Reserved.
-        </footer>
+        {!noPadding && (
+          <footer className="page-footer">
+            © {new Date().getFullYear()} SAVRIN. All Rights Reserved.
+          </footer>
+        )}
       </div>
     </div>
   );

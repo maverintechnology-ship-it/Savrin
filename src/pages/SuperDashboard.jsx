@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import { db } from '../firebase-config';
 import { collection, onSnapshot, query, orderBy, addDoc, deleteDoc, doc, where, getDocs, updateDoc } from 'firebase/firestore';
@@ -7,6 +8,7 @@ import './AdminDashboard.css';
 export default function SuperDashboard() {
   const [companies, setCompanies] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, 'companies'), orderBy('createdAt', 'desc')), (snapshot) => {
@@ -85,6 +87,13 @@ export default function SuperDashboard() {
           <div>
             <div className="stat-value">{companies.filter(c => c.status === 'active').length}</div>
             <div className="stat-label">Active Clients</div>
+          </div>
+        </div>
+        <div className="stat-card" onClick={() => navigate('/admin')} style={{ cursor: 'pointer' }}>
+          <div className="stat-icon-wrap" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>🛡️</div>
+          <div>
+            <div className="stat-value">Admin</div>
+            <div className="stat-label">Open Admin Panel →</div>
           </div>
         </div>
       </div>

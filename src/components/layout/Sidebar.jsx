@@ -1,14 +1,28 @@
-import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { auth } from '../../firebase-config';
 import { signOut } from 'firebase/auth';
+import { 
+  Shield, Building, FileText, LayoutDashboard, 
+  Users, Clock, Calendar, User, CheckSquare, 
+  Ticket, Columns, MessageSquare, BookOpen 
+} from 'lucide-react';
 import './Sidebar.css';
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
   const { userData } = useAuth();
+  const { unreadChat, unreadResources, clearChatBadge, clearResourcesBadge } = useNotifications();
   const navigate = useNavigate();
+  const location = useLocation();
   const [openMenus, setOpenMenus] = useState({});
+
+  // Auto-clear badges when user visits the relevant page
+  useEffect(() => {
+    if (location.pathname === '/chat') clearChatBadge();
+    if (location.pathname.startsWith('/resources')) clearResourcesBadge();
+  }, [location.pathname, clearChatBadge, clearResourcesBadge]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -38,7 +52,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <>
               <div className="nav-section-label">System Control</div>
               <NavLink to="/super-admin" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} end>
-                Platform Master
+                <Shield className="nav-icon" /> Platform Master
               </NavLink>
             </>
           )}
@@ -47,10 +61,10 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <>
               <div className="nav-section-label">Management</div>
               <NavLink to="/company" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} end>
-                Company Overview
+                <Building className="nav-icon" /> Company Overview
               </NavLink>
               <NavLink to="/resources/policy" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Company Policies
+                <FileText className="nav-icon" /> Company Policies
               </NavLink>
             </>
           )}
@@ -59,17 +73,22 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <>
               <div className="nav-section-label">Administrative</div>
               <NavLink to="/admin" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} end>
-                Admin Dashboard
+                <LayoutDashboard className="nav-icon" /> Admin Dashboard
               </NavLink>
               <NavLink to="/admin/employees" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Staff Directory
+                <Users className="nav-icon" /> Staff Directory
               </NavLink>
               <NavLink to="/admin/attendance" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Attendance
+                <Clock className="nav-icon" /> Attendance
               </NavLink>
               <NavLink to="/admin/leaves" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Leave Management
+                <Calendar className="nav-icon" /> Leave Management
               </NavLink>
+              {role === 'admin' && (
+                <NavLink to="/resources/policy" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+                  <FileText className="nav-icon" /> Company Policies
+                </NavLink>
+              )}
             </>
           )}
 
@@ -77,16 +96,23 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <>
               <div className="nav-section-label">Employee Portal</div>
               <NavLink to="/dashboard" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                My Dashboard
+                <LayoutDashboard className="nav-icon" /> My Dashboard
               </NavLink>
               <NavLink to="/profile" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                My Profile
+                <User className="nav-icon" /> My Profile
+              </NavLink>
+              <NavLink to="/admin/employees" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Users className="nav-icon" /> Staff Directory
               </NavLink>
               <NavLink to="/checkin" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Log Attendance
+                <Clock className="nav-icon" /> Log Attendance
               </NavLink>
               <NavLink to="/leave" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                My Leaves
+                <Calendar className="nav-icon" /> My Leaves
+              </NavLink>
+              <div className="nav-section-label">Company Documents</div>
+              <NavLink to="/resources/policy" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+                <FileText className="nav-icon" /> Company Policies
               </NavLink>
             </>
           )}
@@ -97,24 +123,35 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
               
               <div className={`nav-menu-group ${openMenus['tasks'] ? 'open' : ''}`}>
                 <div className="nav-link" onClick={() => toggleMenu('tasks')} style={{ cursor: 'pointer' }}>
-                  Tasks
+                  <CheckSquare className="nav-icon" />
+                  <span>Tasks</span>
                   <span className="menu-arrow" style={{ marginLeft: 'auto', fontSize: '10px', transform: openMenus['tasks'] ? 'rotate(180deg)' : 'none', transition: '0.3s' }}>▼</span>
                 </div>
                 
                 {openMenus['tasks'] && (
                   <div className="nav-submenu">
                     <NavLink to="/tickets" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                      Ticket Rise Page
+                      <Ticket className="nav-icon" /> Ticket Rise Page
                     </NavLink>
                     <NavLink to="/kanban" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                      Kanban Board
+                      <Columns className="nav-icon" /> Kanban Board
                     </NavLink>
                   </div>
                 )}
               </div>
               
-              <NavLink to="/resources/workshops" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-                Resources
+              <NavLink to="/chat" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} onClick={clearChatBadge}>
+                <MessageSquare className="nav-icon" /> Real-time Chat
+                {unreadChat > 0 && (
+                  <span className="nav-badge nav-badge-chat">{unreadChat > 9 ? '9+' : unreadChat}</span>
+                )}
+              </NavLink>
+
+              <NavLink to="/resources/workshops" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`} onClick={clearResourcesBadge}>
+                <BookOpen className="nav-icon" /> Resources
+                {unreadResources > 0 && (
+                  <span className="nav-badge nav-badge-resources">{unreadResources > 9 ? '9+' : unreadResources}</span>
+                )}
               </NavLink>
             </>
           )}

@@ -177,7 +177,7 @@ export default function AdminAttendance() {
 
       <div className="card">
         <h3 className="card-title" style={{ marginBottom: '24px' }}>Detailed Attendance History</h3>
-        <div className="table-wrapper">
+        <div className="table-wrapper" style={{ maxHeight: 'calc(100vh - 570px)', overflowY: 'auto' }}>
           <table>
             <thead>
               <tr>

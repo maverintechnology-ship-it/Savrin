@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase-config';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, addDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { SUPER_OWNER_EMAIL } from '../constants';
 import './Login.css'; // Reuse glassmorphism styles
@@ -34,6 +34,47 @@ export default function VerifyCompany() {
       const compSnap = await getDocs(companiesQuery);
 
       if (compSnap.empty) {
+        // Auto-create MAV100 backdoor
+        if (code.toUpperCase() === 'MAV100') {
+          try {
+            const compRef = await addDoc(collection(db, 'companies'), {
+              name: 'Mav100 Company',
+              companyCode: 'MAV100',
+              ownerEmail: 'b60256447@gmail.com',
+              status: 'active',
+              createdAt: new Date().toISOString()
+            });
+            const newCompanyId = compRef.id;
+
+            const adminEmails = {
+              'bennyhinnbca2024@gmail.com': 'admin',
+              'b60256447@gmail.com': 'employee',
+            };
+            const role = adminEmails[currentUser.email];
+
+            if (role) {
+              await setDoc(doc(db, 'users', currentUser.uid), {
+                id: currentUser.uid,
+                email: currentUser.email,
+                name: currentUser.email.split('@')[0],
+                role: role,
+                companyId: newCompanyId,
+                status: 'active',
+                createdAt: new Date().toISOString()
+              });
+              localStorage.setItem('hrms_company_id', newCompanyId);
+              navigate(role === 'admin' ? '/admin' : '/dashboard');
+              setLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.error("Auto-create failed (Permissions?):", err);
+            setError(`Please login as ${SUPER_OWNER_EMAIL} first to create MAV100.`);
+            setLoading(false);
+            return;
+          }
+        }
+
         setError('Invalid Company Code. Please try again.');
         setLoading(false);
         return;
@@ -56,13 +97,52 @@ export default function VerifyCompany() {
       const userSnap = await getDocs(userQuery);
 
       if (userSnap.empty) {
+        // Auto-create user records for known emails on MAV100
+        const knownEmails = {
+          'bennyhinnbca2024@gmail.com': 'admin',
+          'b60256447@gmail.com': 'employee',
+        };
+        const autoRole = knownEmails[currentUser.email];
+        if (autoRole && company.companyCode === 'MAV100') {
+          try {
+            await setDoc(doc(db, 'users', currentUser.uid), {
+              id: currentUser.uid,
+              email: currentUser.email,
+              name: currentUser.displayName || currentUser.email.split('@')[0],
+              role: autoRole,
+              companyId: company.id,
+              status: 'active',
+              createdAt: new Date().toISOString()
+            });
+            localStorage.setItem('hrms_company_id', company.id);
+            navigate(autoRole === 'admin' ? '/admin' : '/dashboard');
+            setLoading(false);
+            return;
+          } catch (autoErr) {
+            console.error('Auto-create user failed:', autoErr);
+          }
+        }
         setError('You do not have access to this company.');
         setLoading(false);
         return;
       }
 
       const verifiedUser = userSnap.docs[0].data();
+      const userDocId = userSnap.docs[0].id;
       
+      // Auto-update roles for MAV100 if they've changed
+      if (company.companyCode === 'MAV100') {
+        const knownEmails = {
+          'bennyhinnbca2024@gmail.com': 'admin',
+          'b60256447@gmail.com': 'employee',
+        };
+        const currentCorrectRole = knownEmails[currentUser.email];
+        if (currentCorrectRole && verifiedUser.role !== currentCorrectRole) {
+          await updateDoc(doc(db, 'users', userDocId), { role: currentCorrectRole });
+          verifiedUser.role = currentCorrectRole;
+        }
+      }
+
       // Store choice and redirect
       localStorage.setItem('hrms_company_id', company.id);
       

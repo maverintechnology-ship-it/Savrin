@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import { db, firebaseConfig } from '../firebase-config';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where, getDoc, getDocs } from 'firebase/firestore';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,9 @@ import './AdminDashboard.css';
 import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
 
 import { sendWelcomeEmail } from '../services/emailService';
+
+// Email to permanently remove from the system
+const REMOVE_EMAIL = 'rajrndranjothi19@gmail.com';
 
 export default function AdminEmployees() {
   const { userData } = useAuth();
@@ -18,6 +21,28 @@ export default function AdminEmployees() {
   const [newEmp, setNewEmp] = useState({ name: '', email: '', password: '', role: 'employee' });
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' });
+
+  // One-time cleanup: remove Keerthi's account on admin load
+  const cleanedRef = useRef(false);
+  useEffect(() => {
+    if (!userData?.companyId || cleanedRef.current) return;
+    cleanedRef.current = true;
+    const cleanup = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('email', '==', REMOVE_EMAIL));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, 'users', d.id));
+            console.log(`[Admin] Auto-removed user: ${REMOVE_EMAIL}`);
+          }
+        }
+      } catch (err) {
+        console.warn('[Admin] Auto-remove skipped:', err.message);
+      }
+    };
+    cleanup();
+  }, [userData?.companyId]);
 
   useEffect(() => {
     if (!userData?.companyId) return;
@@ -31,13 +56,13 @@ export default function AdminEmployees() {
     };
     fetchCompany();
 
-    // Show admins too if the user is a company owner
-    const allowedRoles = userData.role === 'company' ? ['employee', 'admin'] : ['employee'];
+    // Show all active staff members in the directory (employees, admins, company owners)
+    const allowedRoles = ['employee', 'admin', 'company'];
     
     const q = query(collection(db, 'users'), where('companyId', '==', userData.companyId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const u = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUsers(u.filter(user => allowedRoles.includes(user.role)));
+      setUsers(u.filter(user => allowedRoles.includes(user.role) && user.email !== REMOVE_EMAIL));
     });
     return () => unsubscribe();
   }, [userData]);
@@ -100,49 +125,55 @@ export default function AdminEmployees() {
 
   return (
     <DashboardLayout title="Staff Directory">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '32px' }}>
-        <div className="card">
-          <h3 className="card-title">Register Team Member</h3>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px' }}>Onboard a new employee by creating their workspace access credentials.</p>
-          <form onSubmit={handleAddEmployee}>
-            <div className="form-group">
-              <label>Full Name</label>
-              <input type="text" className="form-control" value={newEmp.name} onChange={e => setNewEmp({...newEmp, name: e.target.value})} required placeholder="e.g. Rahul Sharma" />
-            </div>
-            <div className="form-group">
-              <label>Email Address</label>
-              <input type="email" className="form-control" value={newEmp.email} onChange={e => setNewEmp({...newEmp, email: e.target.value})} required placeholder="e.g. rahul@company.com" />
-            </div>
-            <div className="form-group">
-              <label>Default Password</label>
-              <input type="password" className="form-control" value={newEmp.password} onChange={e => setNewEmp({...newEmp, password: e.target.value})} required placeholder="Min 6 characters" />
-            </div>
-            
-            <div className="form-group">
-              <label>Assigned Role</label>
-              <select 
-                className="form-control" 
-                value={newEmp.role} 
-                onChange={e => setNewEmp({...newEmp, role: e.target.value})}
-                disabled={userData?.role !== 'company'}
-              >
-                <option value="employee">Employee</option>
-                <option value="admin">Administrator</option>
-              </select>
-              {userData?.role !== 'company' && <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>Only Company Owners can promote to Admin.</small>}
-            </div>
-
-            {msg.text && (
-              <div className={`badge badge-${msg.type === 'error' ? 'danger' : 'success'}`} style={{ width: '100%', marginBottom: '20px', padding: '10px', borderRadius: '8px' }}>
-                {msg.type === 'success' ? '✅ ' : '❌ '}{msg.text}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: userData?.role === 'employee' ? '1fr' : '1fr 2fr', 
+        gap: '32px' 
+      }}>
+        {userData?.role !== 'employee' && (
+          <div className="card">
+            <h3 className="card-title">Register Team Member</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px' }}>Onboard a new employee by creating their workspace access credentials.</p>
+            <form onSubmit={handleAddEmployee}>
+              <div className="form-group">
+                <label>Full Name</label>
+                <input type="text" className="form-control" value={newEmp.name} onChange={e => setNewEmp({...newEmp, name: e.target.value})} required placeholder="e.g. Rahul Sharma" />
               </div>
-            )}
-            
-            <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ width: '100%', marginTop: '8px' }}>
-              {loading ? 'Registering...' : '🚀 Register and Invite'}
-            </button>
-          </form>
-        </div>
+              <div className="form-group">
+                <label>Email Address</label>
+                <input type="email" className="form-control" value={newEmp.email} onChange={e => setNewEmp({...newEmp, email: e.target.value})} required placeholder="e.g. rahul@company.com" />
+              </div>
+              <div className="form-group">
+                <label>Default Password</label>
+                <input type="password" className="form-control" value={newEmp.password} onChange={e => setNewEmp({...newEmp, password: e.target.value})} required placeholder="Min 6 characters" />
+              </div>
+              
+              <div className="form-group">
+                <label>Assigned Role</label>
+                <select 
+                  className="form-control" 
+                  value={newEmp.role} 
+                  onChange={e => setNewEmp({...newEmp, role: e.target.value})}
+                  disabled={userData?.role !== 'company'}
+                >
+                  <option value="employee">Employee</option>
+                  <option value="admin">Administrator</option>
+                </select>
+                {userData?.role !== 'company' && <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>Only Company Owners can promote to Admin.</small>}
+              </div>
+
+              {msg.text && (
+                <div className={`badge badge-${msg.type === 'error' ? 'danger' : 'success'}`} style={{ width: '100%', marginBottom: '20px', padding: '10px', borderRadius: '8px' }}>
+                  {msg.type === 'success' ? '✅ ' : '❌ '}{msg.text}
+                </div>
+              )}
+              
+              <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ width: '100%', marginTop: '8px' }}>
+                {loading ? 'Registering...' : '🚀 Register and Invite'}
+              </button>
+            </form>
+          </div>
+        )}
 
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -156,13 +187,13 @@ export default function AdminEmployees() {
                   <th>Staff Member</th>
                   <th>Contact Email</th>
                   <th>Access Role</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  {userData?.role !== 'employee' && <th style={{ textAlign: 'right' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <td colSpan={userData?.role === 'employee' ? 3 : 4} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                       No staff members registered in this company.
                     </td>
                   </tr>
@@ -183,15 +214,17 @@ export default function AdminEmployees() {
                           {user.role}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button 
-                          onClick={() => handleDeleteUser(user.id)} 
-                          className="btn btn-ghost" 
-                          style={{ color: 'var(--danger)', fontSize: '13px', fontWeight: 600 }}
-                        >
-                          Remove
-                        </button>
-                      </td>
+                      {userData?.role !== 'employee' && (
+                        <td style={{ textAlign: 'right' }}>
+                          <button 
+                            onClick={() => handleDeleteUser(user.id)} 
+                            className="btn btn-ghost" 
+                            style={{ color: 'var(--danger)', fontSize: '13px', fontWeight: 600 }}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

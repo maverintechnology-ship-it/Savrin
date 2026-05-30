@@ -42,8 +42,8 @@ export default function Profile() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert("Image size must be less than 1MB. Please choose a smaller file.");
+      if (file.size > 3 * 1024 * 1024) {
+        alert("Image size must be less than 3MB. Please choose a smaller file.");
         return;
       }
       const reader = new FileReader();

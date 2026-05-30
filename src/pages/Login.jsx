@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, db, googleProvider } from '../firebase-config';
+import { auth, googleProvider } from '../firebase-config';
 import { 
   signInWithEmailAndPassword, 
   signInWithPopup,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { SUPER_OWNER_EMAIL } from '../constants';
 import './Login.css';
 
 export default function Login() {
@@ -26,11 +24,13 @@ export default function Login() {
     }
   }, [currentUser, userData]);
 
-  const handleRedirect = (user) => {
-    if (user.email === SUPER_OWNER_EMAIL) {
-      navigate('/super-admin');
-    } else {
-      navigate('/verify-company');
+  const handleRedirect = (role) => {
+    switch(role) {
+      case 'super_owner': navigate('/super-admin'); break;
+      case 'company':     navigate('/company'); break;
+      case 'admin':       navigate('/admin'); break;
+      case 'employee':    navigate('/dashboard'); break;
+      default:            navigate('/verify-company'); break;
     }
   };
 
@@ -40,11 +40,10 @@ export default function Login() {
     setError('');
     
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      handleRedirect(userCredential.user);
+      await signInWithEmailAndPassword(auth, email, password);
+      // Redirect is handled by the useEffect once userData is loaded
     } catch (err) {
       setError('Invalid email or password');
-    } finally {
       setLoading(false);
     }
   };
@@ -53,13 +52,12 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      handleRedirect(result.user);
+      await signInWithPopup(auth, googleProvider);
+      // Redirect handled by useEffect once userData loads
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
         setError('Google sign-in failed');
       }
-    } finally {
       setLoading(false);
     }
   };

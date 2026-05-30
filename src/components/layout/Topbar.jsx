@@ -1,17 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { db } from '../../firebase-config';
 import { collection, addDoc } from 'firebase/firestore';
 import './Topbar.css';
 
 export default function Topbar({ title, toggleSidebar }) {
   const { userData } = useAuth();
+  const { 
+    notifications, 
+    unreadCount, 
+    readNotifIds, 
+    markAsRead, 
+    markAllAsRead, 
+    clearAllNotifications, 
+    deleteNotification 
+  } = useNotifications();
+  const navigate = useNavigate();
+
   const [isCheckedIn, setIsCheckedIn] = useState(localStorage.getItem('hrms_isCheckedIn') === 'true');
   const [isOnBreak, setIsOnBreak] = useState(localStorage.getItem('hrms_isOnBreak') === 'true');
   const [seconds, setSeconds] = useState(parseInt(localStorage.getItem('hrms_secondsElapsed') || '0'));
   
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const notifDropdownRef = useRef(null);
 
   useEffect(() => {
     const handleStorage = () => {
@@ -27,6 +44,9 @@ export default function Topbar({ title, toggleSidebar }) {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setShowDropdown(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target)) {
+        setShowNotifDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -112,6 +132,24 @@ export default function Topbar({ title, toggleSidebar }) {
     setShowDropdown(false);
   };
 
+  const formatTimeAgo = (date) => {
+    if (!date) return '';
+    const now = new Date();
+    const diffSec = Math.floor((now - new Date(date)) / 1000);
+    
+    if (diffSec < 60) return 'just now';
+    
+    const minutes = Math.floor(diffSec / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'yesterday';
+    return new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
   const d = new Date();
   const dateStr = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -125,6 +163,86 @@ export default function Topbar({ title, toggleSidebar }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
         <span className="topbar-date" style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500 }}>{dateStr}</span>
         
+        {/* Premium Notifications Bell & Dropdown */}
+        {userData && (
+          <div className="notification-bell-container" ref={notifDropdownRef}>
+            <button className="notification-bell" onClick={() => setShowNotifDropdown(!showNotifDropdown)} title="Notifications">
+              <Bell size={18} />
+              {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+            </button>
+            
+            {showNotifDropdown && (
+              <div className="notification-dropdown">
+                <div className="notification-dropdown-header">
+                  <h3>Notifications</h3>
+                  {unreadCount > 0 && (
+                    <button className="mark-read-btn" onClick={markAllAsRead}>
+                      Mark all as read
+                    </button>
+                  )}
+                </div>
+                <div className="notification-list">
+                  {notifications.length > 0 ? (
+                    notifications.map(notif => {
+                      const isUnread = !readNotifIds.includes(notif.id);
+                      return (
+                        <div
+                          key={notif.id}
+                          className={`notification-item ${isUnread ? 'unread' : ''}`}
+                          onClick={() => {
+                            markAsRead(notif.id);
+                            setShowNotifDropdown(false);
+                            navigate(notif.link);
+                          }}
+                        >
+                          <div className="notification-item-icon">
+                            {notif.icon}
+                          </div>
+                          <div className="notification-item-content">
+                            <div className="notification-item-title">
+                              {notif.title}
+                            </div>
+                            <div className="notification-item-message">
+                              {notif.message}
+                            </div>
+                            <div className="notification-item-time">
+                              {formatTimeAgo(notif.timestamp)}
+                            </div>
+                          </div>
+                          {isUnread && <div className="notification-item-unread-dot" />}
+                          <button
+                            className="notification-delete-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(notif.id);
+                            }}
+                            title="Dismiss"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="notification-empty">
+                      <div className="notification-empty-icon">🔔</div>
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>All caught up!</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>No new notifications</div>
+                    </div>
+                  )}
+                </div>
+                {notifications.length > 0 && (
+                  <div className="notification-dropdown-footer">
+                    <button className="clear-all-btn" onClick={clearAllNotifications}>
+                      Clear All
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {userData?.role === 'employee' && (
           <div className="global-checkin-widget" ref={dropdownRef} onClick={() => setShowDropdown(!showDropdown)}>
             <span className="timer-text" style={{ color: isCheckedIn ? (isOnBreak ? 'var(--warning)' : 'var(--primary)') : 'var(--text-light)' }}>

@@ -103,17 +103,18 @@ export default function AdminLeaves() {
         <div className="table-wrapper">
           <table>
             <thead>
-              <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {filteredLeaves.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>No requests found.</td></tr>
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>No requests found.</td></tr>
               ) : (
                 filteredLeaves.map(leave => (
                   <tr key={leave.id}>
                     <td className="clickable-name" onClick={() => setSelectedUserId(leave.userId)}>{leave.userName}</td>
                     <td>{leave.type}</td>
                     <td>{new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}</td>
+                    <td style={{ maxWidth: '250px', whiteSpace: 'normal', fontSize: '13px', color: '#475569' }}>{leave.reason}</td>
                     <td><span className={`badge badge-${leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'warning'}`}>{leave.status}</span></td>
                     <td>
                       {leave.status === 'pending' && (

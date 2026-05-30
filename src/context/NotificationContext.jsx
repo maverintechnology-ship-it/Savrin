@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { collection, query, where, onSnapshot, orderBy, limit, getDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { useAuth } from './AuthContext';
@@ -22,6 +22,96 @@ export function NotificationProvider({ children }) {
   // ── Badge counts ──
   const [unreadChat, setUnreadChat] = useState(0);
   const [unreadResources, setUnreadResources] = useState(0);
+
+  // ── State for notifications list ──
+  const [notifWorkshops, setNotifWorkshops] = useState([]);
+  const [notifMeetings, setNotifMeetings] = useState([]);
+  const [notifTickets, setNotifTickets] = useState([]);
+  const [notifPolicies, setNotifPolicies] = useState([]);
+  const [notifLeaves, setNotifLeaves] = useState([]);
+
+  // Client-side read & cleared notification IDs (scoped by user ID)
+  const [readNotifIds, setReadNotifIds] = useState([]);
+  const [clearedNotifIds, setClearedNotifIds] = useState([]);
+
+  // Load read/cleared notification states on user login
+  useEffect(() => {
+    if (userData?.id) {
+      try {
+        const savedRead = localStorage.getItem(`read_notifs_${userData.id}`);
+        setReadNotifIds(savedRead ? JSON.parse(savedRead) : []);
+      } catch {
+        setReadNotifIds([]);
+      }
+      try {
+        const savedCleared = localStorage.getItem(`cleared_notifs_${userData.id}`);
+        setClearedNotifIds(savedCleared ? JSON.parse(savedCleared) : []);
+      } catch {
+        setClearedNotifIds([]);
+      }
+    } else {
+      setReadNotifIds([]);
+      setClearedNotifIds([]);
+    }
+  }, [userData?.id]);
+
+  // Sync read list to localStorage
+  const markAsRead = useCallback((id) => {
+    if (!userData?.id) return;
+    setReadNotifIds(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      localStorage.setItem(`read_notifs_${userData.id}`, JSON.stringify(next));
+      return next;
+    });
+  }, [userData?.id]);
+
+  // Combined notifications computed list
+  const notifications = useMemo(() => {
+    const list = [
+      ...notifWorkshops,
+      ...notifMeetings,
+      ...notifTickets,
+      ...notifPolicies,
+      ...notifLeaves
+    ];
+    // Filter out cleared ones
+    const active = list.filter(n => !clearedNotifIds.includes(n.id));
+    // Sort by timestamp descending (newest first)
+    return active.sort((a, b) => b.timestamp - a.timestamp);
+  }, [notifWorkshops, notifMeetings, notifTickets, notifPolicies, notifLeaves, clearedNotifIds]);
+
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !readNotifIds.includes(n.id)).length;
+  }, [notifications, readNotifIds]);
+
+  const markAllAsRead = useCallback(() => {
+    if (!userData?.id) return;
+    const allIds = notifications.map(n => n.id);
+    setReadNotifIds(allIds);
+    localStorage.setItem(`read_notifs_${userData.id}`, JSON.stringify(allIds));
+  }, [notifications, userData?.id]);
+
+  const deleteNotification = useCallback((id) => {
+    if (!userData?.id) return;
+    setClearedNotifIds(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      localStorage.setItem(`cleared_notifs_${userData.id}`, JSON.stringify(next));
+      return next;
+    });
+  }, [userData?.id]);
+
+  const clearAllNotifications = useCallback(() => {
+    if (!userData?.id) return;
+    const allIds = notifications.map(n => n.id);
+    setClearedNotifIds(prev => {
+      const next = [...prev];
+      allIds.forEach(id => {
+        if (!next.includes(id)) next.push(id);
+      });
+      localStorage.setItem(`cleared_notifs_${userData.id}`, JSON.stringify(next));
+      return next;
+    });
+  }, [notifications, userData?.id]);
 
   const clearChatBadge = useCallback(() => setUnreadChat(0), []);
   const clearResourcesBadge = useCallback(() => setUnreadResources(0), []);
@@ -120,6 +210,18 @@ export function NotificationProvider({ children }) {
     let isFirstSnapshot = true;
 
     const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs.map(doc => ({
+        id: `workshop_${doc.id}`,
+        type: 'workshop',
+        icon: '🎓',
+        title: 'New Workshop',
+        message: `Workshop '${doc.data().title}' is scheduled for ${doc.data().date} at ${doc.data().time}.`,
+        link: '/resources/workshops',
+        timestamp: new Date(doc.data().createdAt || Date.now()),
+        companyId: doc.data().companyId
+      }));
+      setNotifWorkshops(items);
+
       if (isFirstSnapshot) {
         isFirstSnapshot = false;
         return;
@@ -158,6 +260,18 @@ export function NotificationProvider({ children }) {
     let isFirstSnapshot = true;
 
     const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs.map(doc => ({
+        id: `meeting_${doc.id}`,
+        type: 'meeting',
+        icon: '📹',
+        title: 'New Meeting Scheduled',
+        message: `Meeting '${doc.data().title}' is scheduled for ${doc.data().date} at ${doc.data().time}.`,
+        link: '/resources/meetings',
+        timestamp: new Date(doc.data().createdAt || doc.data().scheduledAt || Date.now()),
+        companyId: doc.data().companyId
+      }));
+      setNotifMeetings(items);
+
       if (isFirstSnapshot) {
         isFirstSnapshot = false;
         return;
@@ -176,7 +290,7 @@ export function NotificationProvider({ children }) {
             icon: '📅',
             title: 'New Meeting Scheduled',
             message: `${data.title || 'A new meeting'}${scheduledAt ? ` — ${scheduledAt}` : ''}`,
-            link: '/admin',
+            link: '/resources/meetings',
           });
         }
       });
@@ -184,6 +298,155 @@ export function NotificationProvider({ children }) {
 
     return () => unsub();
   }, [userData?.companyId, addToast]);
+
+  // ── Tickets listener ──
+  useEffect(() => {
+    if (!userData?.companyId || userData.companyId === 'platform' || !userData?.id) return;
+
+    const currentUserId = userData.id || userData.uid;
+    const q = query(
+      collection(db, 'tickets'),
+      where('companyId', '==', userData.companyId),
+      where('assignedToId', '==', currentUserId)
+    );
+
+    let isFirstSnapshot = true;
+
+    const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs.map(doc => ({
+        id: `ticket_${doc.id}`,
+        type: 'ticket',
+        icon: '🎫',
+        title: 'New Task Assigned',
+        message: `You have been assigned task '${doc.data().title}' (Priority: ${doc.data().priority}).`,
+        link: '/tickets',
+        timestamp: new Date(doc.data().createdAt || Date.now()),
+        companyId: doc.data().companyId
+      }));
+      setNotifTickets(items);
+
+      if (isFirstSnapshot) {
+        isFirstSnapshot = false;
+        return;
+      }
+
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          addToast({
+            type: 'ticket',
+            icon: '🎫',
+            title: 'New Task Assigned',
+            message: data.title || 'A new task has been assigned to you',
+            link: '/tickets',
+          });
+        }
+      });
+    });
+
+    return () => unsub();
+  }, [userData?.companyId, userData?.id, addToast]);
+
+  // ── Policies listener ──
+  useEffect(() => {
+    if (!userData?.companyId || userData.companyId === 'platform') return;
+
+    const q = query(
+      collection(db, 'policies'),
+      where('companyId', '==', userData.companyId)
+    );
+
+    let isFirstSnapshot = true;
+
+    const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs.map(doc => ({
+        id: `policy_${doc.id}`,
+        type: 'policy',
+        icon: '📜',
+        title: 'Policy Published',
+        message: `A new policy has been published: '${doc.data().title.replace(/^[0-9.]+\s*/, '')}'.`,
+        link: '/resources/policy',
+        timestamp: new Date(doc.data().createdAt || Date.now()),
+        companyId: doc.data().companyId
+      }));
+      setNotifPolicies(items);
+
+      if (isFirstSnapshot) {
+        isFirstSnapshot = false;
+        return;
+      }
+
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          addToast({
+            type: 'policy',
+            icon: '📜',
+            title: 'Policy Published',
+            message: data.title || 'A new policy has been published',
+            link: '/resources/policy',
+          });
+        }
+      });
+    });
+
+    return () => unsub();
+  }, [userData?.companyId, addToast]);
+
+  // ── Leaves listener ──
+  useEffect(() => {
+    if (!userData?.companyId || userData.companyId === 'platform' || !userData?.id) return;
+
+    const currentUserId = userData.id || userData.uid;
+    const q = query(
+      collection(db, 'leaves'),
+      where('companyId', '==', userData.companyId),
+      where('userId', '==', currentUserId)
+    );
+
+    let isFirstSnapshot = true;
+
+    const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs
+        .filter(doc => doc.data().status !== 'pending')
+        .map(doc => {
+          const status = doc.data().status;
+          return {
+            id: `leave_${doc.id}_${status}`,
+            type: 'leave',
+            icon: status === 'approved' ? '✅' : '❌',
+            title: `Leave Request ${status.toUpperCase()}`,
+            message: `Your leave request for ${doc.data().startDate} has been ${status}.`,
+            link: '/leave',
+            timestamp: new Date(doc.data().createdAt || Date.now()),
+            companyId: doc.data().companyId
+          };
+        });
+      setNotifLeaves(items);
+
+      if (isFirstSnapshot) {
+        isFirstSnapshot = false;
+        return;
+      }
+
+      snap.docChanges().forEach(change => {
+        if (change.type === 'modified') {
+          const data = change.doc.data();
+          if (data.status !== 'pending') {
+            addToast({
+              type: 'leave',
+              icon: data.status === 'approved' ? '✅' : '❌',
+              title: `Leave Request ${data.status.toUpperCase()}`,
+              message: `Your leave request starting ${data.startDate} has been ${data.status}.`,
+              link: '/leave',
+            });
+          }
+        }
+      });
+    });
+
+    return () => unsub();
+  }, [userData?.companyId, userData?.id, addToast]);
 
   // ── Calls listener ──
   useEffect(() => {
@@ -237,12 +500,13 @@ export function NotificationProvider({ children }) {
     }
   };
 
-
   return (
     <NotificationContext.Provider value={{
       toasts, addToast, removeToast,
       unreadChat, unreadResources,
-      clearChatBadge, clearResourcesBadge
+      clearChatBadge, clearResourcesBadge,
+      notifications, unreadCount, readNotifIds,
+      markAsRead, markAllAsRead, clearAllNotifications, deleteNotification
     }}>
       {children}
       
